@@ -5,6 +5,8 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+import json, os
+
 
 # Предзаданные остановки
 all_stops = [f"Остановка {i}" for i in range(1, 26)]
@@ -29,7 +31,7 @@ class StopRow(BoxLayout):
 
     def get_icon(self):
         # Если не отображаются звезды, используем символы-заглушки
-        return "★" if self.is_favorite else "☆"
+        return "Избранное" if self.is_favorite else "+"
 
     def toggle_favorite(self, instance):
         self.is_favorite = not self.is_favorite
@@ -57,7 +59,7 @@ class FavoriteScreen(Screen):
         self.grid.clear_widgets()
         if not favorites:
             self.grid.add_widget(Label(
-                text="Добавьте остановки в избранное, нажав кнопку '☆'.",
+                text="Добавьте остановки в избранное, нажав кнопку '+'.",
                 size_hint_y=None, height=40))
         else:
             for stop in favorites:
@@ -148,11 +150,14 @@ class AboutScreen(Screen):
 # Главное приложение
 class MainApp(App):
     def build(self):
-        self.favorites = []
+        self.favorites = self.load_favorites()  # при старте читаем сохранённые избранные
 
         self.sm = ScreenManager(transition=FadeTransition())
         self.favorite_screen = FavoriteScreen(name='favorite')
-        self.all_stops_screen = AllStopsScreen(update_favorites_callback=self.update_favorites, name='all_stops')
+        self.all_stops_screen = AllStopsScreen(
+            update_favorites_callback=self.update_favorites,
+            name='all_stops'
+        )
         self.about_screen = AboutScreen(name='about')
 
         self.sm.add_widget(self.favorite_screen)
@@ -168,6 +173,11 @@ class MainApp(App):
         menu.add_widget(Button(text="О приложении", on_press=lambda x: self.change_screen('about')))
         root.add_widget(menu)
 
+        # обновим сразу экран "Избранное" и "Все остановки"
+        self.favorite_screen.update_favorites(self.favorites)
+        self.all_stops_screen.favorites = set(self.favorites)
+        self.all_stops_screen.build_stop_list()
+
         return root
 
     def change_screen(self, screen_name):
@@ -176,6 +186,20 @@ class MainApp(App):
     def update_favorites(self, new_favorites):
         self.favorites = new_favorites
         self.favorite_screen.update_favorites(self.favorites)
+        self.save_favorites()  # сохраняем при каждом изменении
+
+    def save_favorites(self):
+        """Сохраняем избранные остановки в JSON"""
+        with open("favorites.json", "w", encoding="utf-8") as f:
+            json.dump(self.favorites, f, ensure_ascii=False, indent=2)
+
+    def load_favorites(self):
+        """Загружаем избранные из файла (если есть)"""
+        if os.path.exists("favorites.json"):
+            with open("favorites.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        return []
+
 
 if __name__ == '__main__':
     MainApp().run()
