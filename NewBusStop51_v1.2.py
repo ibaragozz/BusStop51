@@ -6,7 +6,7 @@ from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
 import json, os
-
+from kivy.utils import get_color_from_hex
 
 # Предзаданные остановки
 all_stops = [f"Остановка {i}" for i in range(1, 26)]
@@ -46,12 +46,21 @@ class FavoriteScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.layout = BoxLayout(orientation='vertical')
-        self.label = Label(text="Избранные остановки", size_hint_y=None, height=40)
+        self.label = Label(
+            text="Избранные остановки",
+            size_hint_y=None,
+            height=50,
+            font_size=20,
+            bold=True,
+            color=get_color_from_hex("#ffffff")  # чёрный текст
+        )
         self.layout.add_widget(self.label)
+
         self.scroll = ScrollView()
-        self.grid = GridLayout(cols=1, spacing=10, size_hint_y=None)
+        self.grid = GridLayout(cols=1, spacing=10, size_hint_y=None, padding=10)
         self.grid.bind(minimum_height=self.grid.setter('height'))
         self.scroll.add_widget(self.grid)
+
         self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
 
@@ -59,13 +68,37 @@ class FavoriteScreen(Screen):
         self.grid.clear_widgets()
         if not favorites:
             self.grid.add_widget(Label(
-                text="Добавьте остановки в избранное, нажав кнопку '+'.",
-                size_hint_y=None, height=40))
+                text="Добавьте остановки в избранное, нажав кнопку '+' в списке.",
+                size_hint_y=None,
+                height=40,
+                font_size=16,
+                color=get_color_from_hex("#333333")  # тёмно-серый
+            ))
         else:
             for stop in favorites:
-                title = Label(text=stop, size_hint_y=None, height=30)
-                info = Label(text="Ближайший автобус: 10:00", size_hint_y=None, height=30)
-                self.grid.add_widget(title)
+                # Название остановки как "кнопка без клика"
+                stop_title = Button(
+                    text=stop,
+                    size_hint_y=None,
+                    height=50,
+                    font_size=20,
+                    bold=True,
+                    background_normal='',
+                    background_color=get_color_from_hex("#ffbfaa"),  # светлый фон
+                    color=get_color_from_hex("#000000"),             # чёрный текст
+                    disabled=True
+                )
+
+                # Инфо под остановкой
+                info = Label(
+                    text="Ближайший автобус: 10:00",
+                    size_hint_y=None,
+                    height=40,
+                    font_size=16,
+                    color=get_color_from_hex("#444444")  # серый текст
+                )
+
+                self.grid.add_widget(stop_title)
                 self.grid.add_widget(info)
 
 # Экран "Все остановки"
