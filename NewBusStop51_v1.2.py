@@ -9,7 +9,7 @@ import json, os
 from kivy.utils import get_color_from_hex
 
 # Предзаданные остановки
-all_stops = [f"Остановка {i}" for i in range(1, 26)]
+all_stops = [f"Остановка {i}" for i in range(1, 33)]
 terminal_stops = ["Морвокзал", "Комсомольская", "Авиагородок", "Полярная"]
 
 # Виджет для строки остановки с кнопкой "избранное"
@@ -31,7 +31,7 @@ class StopRow(BoxLayout):
 
     def get_icon(self):
         # Если не отображаются звезды, используем символы-заглушки
-        return "Избранное" if self.is_favorite else "+"
+        return "Избр" if self.is_favorite else "+"
 
     def toggle_favorite(self, instance):
         self.is_favorite = not self.is_favorite
