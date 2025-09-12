@@ -229,7 +229,7 @@ class BusStopApp(App):
                                 result += '[color=#9966cc]Автобус №8 : {}[/color]\n'.format(el)
                                 break
                 if current_time > M8d[-1]:
-                        result += '[color=#ff0000]Последний автобус №3 ушел[/color]\n'
+                        result += '[color=#ff0000]Последний автобус №8 ушел[/color]\n'
                 self.label.markup = True
                 self.label.text = result
 
