@@ -6,6 +6,7 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.label import Label
 from kivy.uix.scrollview import ScrollView
+from kivy.utils import get_color_from_hex
 import json
 import os
 
@@ -42,7 +43,7 @@ def get_next_bus(stop_name):
 
 # ===== Предзаданные остановки =====
 all_stops = [f"Остановка {i}" for i in range(1, 34)]
-terminal_stops = ["Морвокзал", "ул.Комсомольская", "Авиагородок", "Полярная"]
+terminal_stops = ["Морвокзал", "Сбербанк (в сторону ул.Советской)", "Авиагородок", "Полярная"]
 
 
 # ===== Виджет для строки остановки =====
@@ -79,43 +80,60 @@ class StopRow(BoxLayout):
 class FavoriteScreen(Screen):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.layout = BoxLayout(orientation="vertical")
-        self.label = Label(text="Избранные остановки", size_hint_y=None, height=40)
+        self.layout = BoxLayout(orientation='vertical')
+        self.label = Label(
+            text="Избранные остановки",
+            size_hint_y=None,
+            height=50,
+            font_size=20,
+            bold=True,
+            color=get_color_from_hex("#ffffff")  # чёрный текст
+        )
         self.layout.add_widget(self.label)
+
         self.scroll = ScrollView()
-        self.grid = GridLayout(cols=1, spacing=10, size_hint_y=None)
-        self.grid.bind(minimum_height=self.grid.setter("height"))
+        self.grid = GridLayout(cols=1, spacing=10, size_hint_y=None, padding=10)
+        self.grid.bind(minimum_height=self.grid.setter('height'))
         self.scroll.add_widget(self.grid)
+
         self.layout.add_widget(self.scroll)
         self.add_widget(self.layout)
 
     def update_favorites(self, favorites):
         self.grid.clear_widgets()
         if not favorites:
-            self.grid.add_widget(
-                Label(
-                    text="Добавьте остановки в избранное, нажав кнопку '+'.",
-                    size_hint_y=None,
-                    height=40,
-                )
-            )
+            self.grid.add_widget(Label(
+                text="Добавьте остановки в избранное, нажав кнопку '+' в списке.",
+                size_hint_y=None,
+                height=40,
+                font_size=16,
+                color=get_color_from_hex("#333333")  # тёмно-серый
+            ))
         else:
             for stop in favorites:
-                title = Label(
+                # Название остановки как "кнопка без клика"
+                stop_title = Button(
                     text=stop,
                     size_hint_y=None,
-                    height=40,
-                    color=(0, 0, 0, 1),
+                    height=50,
+                    font_size=20,
                     bold=True,
+                    background_normal='',
+                    background_color=get_color_from_hex("#ffbfaa"),  # светлый фон
+                    color=get_color_from_hex("#000000"),             # чёрный текст
+                    disabled=True
                 )
-                info_text = get_next_bus(stop)
+
+                # Инфо под остановкой
                 info = Label(
-                    text=info_text,
+                    text="Ближайший автобус: 10:00",
                     size_hint_y=None,
-                    height=60,
-                    color=(0.2, 0.2, 0.2, 1),
+                    height=40,
+                    font_size=16,
+                    color=get_color_from_hex("#444444")  # серый текст
                 )
-                self.grid.add_widget(title)
+
+                self.grid.add_widget(stop_title)
                 self.grid.add_widget(info)
 
 
