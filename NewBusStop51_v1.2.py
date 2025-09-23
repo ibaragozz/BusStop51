@@ -8,9 +8,12 @@ from kivy.uix.scrollview import ScrollView
 import json, os
 from kivy.utils import get_color_from_hex
 
+with open("schedule.json", "r", encoding="utf-8") as f:
+    schedule = json.load(f)
+
 # Предзаданные остановки
-all_stops = [f"Остановка {i}" for i in range(1, 33)]
-terminal_stops = ["Морвокзал", "Комсомольская", "Авиагородок", "Полярная"]
+all_stops = list(schedule.keys())
+terminal_stops = ["Морвокзал", "ул.Комсомольская", "Авиагородок", "ул.Полярная"]
 
 # Виджет для строки остановки с кнопкой "избранное"
 class StopRow(BoxLayout):
@@ -125,14 +128,16 @@ class AllStopsScreen(Screen):
         self.build_stop_list()
 
     def build_stop_list(self):
-        """Перестраивает список остановок с учётом избранных"""
         self.grid.clear_widgets()
         self.info_labels.clear()
 
-        # базовый список (терминальные + остальные)
-        base_stops = terminal_stops + sorted(set(all_stops) - set(terminal_stops))
-        # сортировка: избранные сверху
-        sorted_stops = sorted(base_stops, key=lambda s: (s not in self.favorites, s))
+        # отдельные группы
+        favorite_stops = sorted([s for s in all_stops if s in self.favorites])
+        terminal_not_fav = [s for s in terminal_stops if s not in self.favorites]
+        other_stops = sorted([s for s in all_stops if s not in self.favorites and s not in terminal_stops])
+
+        # итоговый список
+        sorted_stops = favorite_stops + terminal_not_fav + other_stops
 
         for stop in sorted_stops:
             row = StopRow(
