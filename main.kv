@@ -1,0 +1,34 @@
+MDScreen:
+    MDBottomNavigation:
+        text_color_active: "blue"
+
+        MDBottomNavigationItem:
+            name: "stops"
+            text: "Остановки"
+            icon: "bus"
+
+            MDScrollView:
+                MDBoxLayout:
+                    id: stops_box
+                    orientation: "vertical"
+                    padding: "10dp"
+                    spacing: "10dp"
+                    adaptive_height: True
+
+        MDBottomNavigationItem:
+            name: "favorites"
+            text: "Избранное"
+            icon: "star"
+
+            MDLabel:
+                text: "Избранные остановки появятся здесь"
+                halign: "center"
+
+        MDBottomNavigationItem:
+            name: "about"
+            text: "О приложении"
+            icon: "information"
+
+            MDLabel:
+                text: "Расписание автобусов\nРазработчик: Вы"
+                halign: "center"
