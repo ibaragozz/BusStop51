@@ -1,34 +1,65 @@
-MDScreen:
-    MDBottomNavigation:
-        text_color_active: "blue"
+#:kivy 2.3.1
+#:import MDLabel kivymd.uix.label.MDLabel
+#:import MDBoxLayout kivymd.uix.boxlayout.MDBoxLayout
+#:import MDScrollView kivymd.uix.scrollview.MDScrollView
 
-        MDBottomNavigationItem:
+BoxLayout:
+    orientation: "vertical"
+
+    ScreenManager:
+        id: screen_manager
+        size_hint_y: 1
+
+        AllStopsScreen:
             name: "stops"
-            text: "Остановки"
-            icon: "bus"
 
-            MDScrollView:
-                MDBoxLayout:
-                    id: stops_box
-                    orientation: "vertical"
-                    padding: "10dp"
-                    spacing: "10dp"
-                    adaptive_height: True
-
-        MDBottomNavigationItem:
+        FavoritesScreen:
             name: "favorites"
-            text: "Избранное"
-            icon: "star"
 
-            MDLabel:
-                text: "Избранные остановки появятся здесь"
-                halign: "center"
-
-        MDBottomNavigationItem:
+        AboutScreen:
             name: "about"
-            text: "О приложении"
-            icon: "information"
 
-            MDLabel:
-                text: "Расписание автобусов\nРазработчик: Вы"
-                halign: "center"
+    MDBoxLayout:
+        size_hint_y: None
+        height: "56dp"
+        md_bg_color: 0.95, 0.95, 0.95, 1
+        spacing: "5dp"
+        padding: "5dp"
+
+        MDButton:
+            text: "Все остановки"
+            size_hint_x: 1
+            on_release: screen_manager.current = "stops"
+
+        MDButton:
+            text: "Избранное"
+            size_hint_x: 1
+            on_release: screen_manager.current = "favorites"
+
+        MDButton:
+            text: "О приложении"
+            size_hint_x: 1
+            on_release: screen_manager.current = "about"
+
+<AllStopsScreen>:
+    MDScrollView:
+        MDBoxLayout:
+            id: stops_box
+            orientation: "vertical"
+            padding: "10dp"
+            spacing: "10dp"
+            adaptive_height: True
+
+<FavoritesScreen>:
+    MDScrollView:
+        MDBoxLayout:
+            id: favorites_box
+            orientation: "vertical"
+            padding: "10dp"
+            spacing: "10dp"
+            adaptive_height: True
+
+<AboutScreen>:
+    MDLabel:
+        text: "Расписание автобусов\\nРазработчик: Вы"
+        halign: "center"
