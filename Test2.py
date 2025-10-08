@@ -8,9 +8,11 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.scrollview import MDScrollView
 from kivymd.uix.navigationbar import MDNavigationBar, MDNavigationItem, MDNavigationItemIcon, MDNavigationItemLabel
 from kivymd.uix.screen import MDScreen
+from kivymd.uix.button import MDIconButton
 from kivy.uix.label import Label
 from datetime import datetime
 import json
+import os
 
 
 class RouteInfo(MDBoxLayout):
@@ -90,7 +92,7 @@ class RouteInfo(MDBoxLayout):
 
 
 class StopCard(MDCard):
-    def __init__(self, stop_name, routes, **kwargs):
+    def __init__(self, stop_name, routes, is_favorite=False, **kwargs):
         super().__init__(**kwargs)
         self.orientation = "vertical"
         self.size_hint_y = None
@@ -100,6 +102,7 @@ class StopCard(MDCard):
         self.stop_name = stop_name
         self.routes_data = routes
         self.is_expanded = False
+        self.is_favorite = is_favorite
 
         # Основная кнопка-заголовок
         self.header_button = MDBoxLayout(
@@ -117,18 +120,28 @@ class StopCard(MDCard):
             font_size='16sp',
             bold=True,
             color=(0, 0, 0, 1),
-            size_hint_x=0.9,
+            size_hint_x=0.7,
             halign="left"
         ))
 
+        # Кнопка добавления в избранное
+        self.favorite_btn = MDIconButton(
+            icon="star-outline" if not is_favorite else "star",
+            theme_text_color="Custom",
+            text_color=(1, 0.8, 0, 1) if is_favorite else (0.5, 0.5, 0.5, 1),
+            size_hint_x=0.15,
+            on_release=self.toggle_favorite
+        )
+        self.header_button.add_widget(self.favorite_btn)
+
         # Стрелка для индикации состояния
         self.arrow_label = Label(
-            text="▼",  # или "▽"
+            text="▼",
             font_size='14sp',
             color=(0.5, 0.5, 0.5, 1),
-            size_hint_x=0.1,
+            size_hint_x=0.15,
             halign="right",
-            font_name="arial"  # Укажи шрифт, который поддерживает Unicode
+            font_name="arial"
         )
         self.header_button.add_widget(self.arrow_label)
 
@@ -136,7 +149,7 @@ class StopCard(MDCard):
         self.header_button.bind(on_touch_down=self.on_header_touch)
         self.add_widget(self.header_button)
 
-        # Контейнер для содержимого (изначально скрыт)
+        # Контейнер для содержимого
         self.content_container = MDBoxLayout(
             orientation="vertical",
             size_hint_y=None,
@@ -150,12 +163,32 @@ class StopCard(MDCard):
         # Начальная высота карточки (только заголовок)
         self.height = 50
 
+        # Если карточка для избранного - автоматически разворачиваем
+        if is_favorite:
+            self.expand(animate=False)
+
     def on_header_touch(self, instance, touch):
         """Обработчик нажатия на заголовок"""
-        if instance.collide_point(*touch.pos):
+        if instance.collide_point(*touch.pos) and not self.favorite_btn.collide_point(*touch.pos):
             self.toggle_content()
             return True
         return False
+
+    def toggle_favorite(self, instance):
+        """Добавляет/убирает остановку из избранного"""
+        app = MDApp.get_running_app()
+        if self.is_favorite:
+            # Убираем из избранного
+            app.remove_from_favorites(self.stop_name)
+            self.favorite_btn.icon = "star-outline"
+            self.favorite_btn.text_color = (0.5, 0.5, 0.5, 1)
+            self.is_favorite = False
+        else:
+            # Добавляем в избранное
+            app.add_to_favorites(self.stop_name, self.routes_data)
+            self.favorite_btn.icon = "star"
+            self.favorite_btn.text_color = (1, 0.8, 0, 1)
+            self.is_favorite = True
 
     def toggle_content(self):
         """Переключает состояние развернуто/свернуто"""
@@ -164,11 +197,11 @@ class StopCard(MDCard):
         else:
             self.expand()
 
-    def expand(self):
+    def expand(self, animate=True):
         """Разворачивает карточку"""
         if not self.is_expanded:
             self.is_expanded = True
-            self.arrow_label.icon = "chevron-up"
+            self.arrow_label.text = "▲"
 
             # Очищаем предыдущее содержимое
             self.content_container.clear_widgets()
@@ -196,20 +229,20 @@ class StopCard(MDCard):
                 self.show_no_buses_message()
                 content_height = 40
 
-            # БЕЗ АНИМАЦИИ - сразу устанавливаем значения
+            # Устанавливаем значения
             self.content_container.height = content_height
             self.content_container.opacity = 1
 
             # Общая высота карточки = заголовок + контент
             self.height = 50 + content_height
 
-    def collapse(self):
+    def collapse(self, animate=True):
         """Сворачивает карточку"""
         if self.is_expanded:
             self.is_expanded = False
-            self.arrow_label.icon = "chevron-down"
+            self.arrow_label.text = "▼"
 
-            # БЕЗ АНИМАЦИИ - сразу устанавливаем значения
+            # Устанавливаем значения
             self.content_container.height = 0
             self.content_container.opacity = 0
 
@@ -239,7 +272,6 @@ class StopCard(MDCard):
             route_widget = RouteInfo(route_number, next_time)
             row.add_widget(route_widget)
 
-            # Если в строке уже 4 маршрута или это последний маршрут, создаем новую строку
             if (i + 1) % 4 == 0 and (i + 1) < len(routes):
                 container.add_widget(row)
                 row = MDBoxLayout(
@@ -249,7 +281,6 @@ class StopCard(MDCard):
                     height="50dp"
                 )
 
-        # Добавляем последнюю строку
         if len(row.children) > 0:
             container.add_widget(row)
 
@@ -258,12 +289,8 @@ class StopCard(MDCard):
         if not routes:
             return 40
 
-        # Вычисляем количество строк (максимум 4 маршрута в строке)
         num_rows = (len(routes) + 3) // 4
-
-        # Высота строк маршрутов + отступы
         routes_height = num_rows * 50 + (num_rows - 1) * 10
-
         return routes_height + 20
 
     def show_no_buses_message(self):
@@ -305,13 +332,17 @@ class AllStopsScreen(MDScreen):
             ("Остановка с 5 маршрутами",
              [("1", "16:00"), ("2", "16:05"), ("3", "16:10"), ("4", "16:15"), ("5", "16:20")]),
             ("Остановка с 8 маршрутами", [("6", "16:25"), ("7", "16:30"), ("8", "16:35"), ("9", "16:40"),
-                                          ("10", "16:45"), ("11", "16:50"), ("12", "16:55"), ("13", "17:00")]),
+                                          ("10", "16:45"), ("11", "16:50"), ("12", "18:55"), ("13", "19:00")]),
             ("Остановка Северная", [("3", "16:10"), ("18", "16:25")]),
-            ("Остановка Южная", [("5", "15:38"), ("12", "15:45"), ("22", "16:00"), ("31", "16:15")]),
+            ("Остановка Южная", [("5", "20:38"), ("12", "20:45"), ("22", "20:00"), ("31", "20:15")]),
         ]
 
+        app = MDApp.get_running_app()
+        favorites = app.load_favorites()
+
         for stop_name, routes in stops_data:
-            card = StopCard(stop_name, routes)
+            is_favorite = stop_name in favorites
+            card = StopCard(stop_name, routes, is_favorite=is_favorite)
             self.stops_box.add_widget(card)
 
 
@@ -334,11 +365,21 @@ class FavoritesScreen(MDScreen):
 
     def update_favorites(self):
         self.favorites_box.clear_widgets()
-        self.favorites_box.add_widget(Label(
-            text="Здесь будут избранные остановки",
-            halign="center",
-            color=(0.5, 0.5, 0.5, 1)
-        ))
+
+        app = MDApp.get_running_app()
+        favorites = app.load_favorites()
+
+        if not favorites:
+            self.favorites_box.add_widget(Label(
+                text="Добавьте остановки в избранное",
+                halign="center",
+                color=(0.5, 0.5, 0.5, 1)
+            ))
+        else:
+            for stop_name, routes in favorites.items():
+                # routes уже загружен как список из JSON
+                card = StopCard(stop_name, routes, is_favorite=True)
+                self.favorites_box.add_widget(card)
 
 
 class AboutScreen(MDScreen):
@@ -392,6 +433,10 @@ MDBoxLayout:
 
 
 class BusApp(MDApp):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.favorites_file = "favorites.json"
+
     def on_switch_tabs(self, *args):
         item_text = args[3]
         screen_map = {
@@ -400,6 +445,61 @@ class BusApp(MDApp):
             "О приложении": "about"
         }
         self.root.ids.screen_manager.current = screen_map.get(item_text, "favorites")
+
+    def load_favorites(self):
+        """Загружает избранные остановки из файла"""
+        if os.path.exists(self.favorites_file):
+            try:
+                with open(self.favorites_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    # Проверяем, что загруженные данные - словарь
+                    if isinstance(data, dict):
+                        return data
+                    else:
+                        return {}
+            except:
+                return {}
+        return {}
+
+    def add_to_favorites(self, stop_name, routes):
+        """Добавляет остановку в избранное"""
+        favorites = self.load_favorites()
+        # Убеждаемся, что favorites - словарь
+        if not isinstance(favorites, dict):
+            favorites = {}
+
+        # Сохраняем маршруты как список
+        favorites[stop_name] = routes
+        self.save_favorites(favorites)
+
+    def save_favorites(self, favorites):
+        """Сохраняет избранные остановки в файл"""
+        try:
+            # Убеждаемся, что сохраняем словарь
+            if not isinstance(favorites, dict):
+                favorites = {}
+
+            with open(self.favorites_file, 'w', encoding='utf-8') as f:
+                json.dump(favorites, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Ошибка сохранения: {e}")
+
+    def remove_from_favorites(self, stop_name):
+        """Убирает остановку из избранного"""
+        favorites = self.load_favorites()
+        if stop_name in favorites:
+            del favorites[stop_name]
+            self.save_favorites(favorites)
+
+    def load_favorites(self):
+        """Загружает избранные остановки из файла"""
+        if os.path.exists(self.favorites_file):
+            try:
+                with open(self.favorites_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            except:
+                return {}
+        return {}
 
     def build(self):
         return Builder.load_string(KV)
