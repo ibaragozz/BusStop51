@@ -14,18 +14,22 @@ MDBoxLayout:
             MDLabel:
                 text: "Избранное"
                 halign: "center"
+                theme_text_color: "Primary"
 
         MDScreen:
             name: "stops"
             MDLabel:
                 text: "Все остановки" 
                 halign: "center"
+                theme_text_color: "Primary"
 
         MDScreen:
             name: "about"
             MDLabel:
                 text: "О приложении"
                 halign: "center"
+                theme_text_color: "Primary"
+                
 
     MDNavigationBar:
         on_switch_tabs: app.on_switch_tabs(*args)
@@ -51,7 +55,7 @@ MDBoxLayout:
 
 class BusApp(MDApp):
     def on_switch_tabs(self, *args):
-        index = args[0].children.index(args[1])
+        index = list(reversed(args[0].children)).index(args[1])
         screens = ["favorites", "stops", "about"]
         self.root.ids.screen_manager.current = screens[index]
 
