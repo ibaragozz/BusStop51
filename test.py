@@ -1,6 +1,8 @@
 from kivy.lang import Builder
 from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
+import json
+from kivy.properties import StringProperty
 
 KV = '''
 MDBoxLayout:
@@ -21,16 +23,11 @@ MDBoxLayout:
             name: "stops"
             ScrollView:
                 MDBoxLayout:
+                    id: stops_container
                     orientation: "vertical"
                     padding: "10dp"
                     spacing: "10dp"
                     adaptive_height: True
-
-                    StopCard:
-                        stop_name: "ТЕСТ Остановка"
-
-                    StopCard:
-                        stop_name: "ТЕСТ Остановка 2"
 
         MDScreen:
             name: "about"
@@ -106,10 +103,11 @@ MDBoxLayout:
 
 
 class StopCard(MDCard):
-    stop_name = "Остановка"
+    stop_name = StringProperty("Остановка")
 
-    def __init__(self, **kwargs):
+    def __init__(self, stop_name="Остановка", **kwargs):
         super().__init__(**kwargs)
+        self.stop_name = stop_name
         self.is_expanded = False
         self.is_favorite = False
 
@@ -145,13 +143,46 @@ class StopCard(MDCard):
 
 
 class BusApp(MDApp):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def build(self):
+        root = Builder.load_string(KV)  # root - локальная переменная
+        self.schedule_data = self.load_schedule()
+
+        # Используем root вместо self.root
+        stops_container = root.ids.stops_container
+        stops_container.clear_widgets()
+
+        for stop_name in self.schedule_data.keys():
+            card = StopCard(stop_name=stop_name)
+            stops_container.add_widget(card)
+
+        return root  # теперь self.root установится
+
+    def load_schedule(self):
+        """Загружает расписание из JSON файла"""
+        try:
+            with open('schedule.json', 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            print("Файл schedule.json не найден!")
+            return {}
+        except Exception as e:
+            print(f"Ошибка загрузки JSON: {e}")
+            return {}
+
+    def create_stop_cards(self):
+        stops_container = self.root.ids.stops_container
+        stops_container.clear_widgets()
+        for stop_name in self.schedule_data.keys():
+            card = StopCard(stop_name=stop_name)
+            stops_container.add_widget(card)
+
     def on_switch_tabs(self, *args):
         index = list(reversed(args[0].children)).index(args[1])
         screens = ["favorites", "stops", "about"]
         self.root.ids.screen_manager.current = screens[index]
-
-    def build(self):
-        return Builder.load_string(KV)
 
 
 if __name__ == "__main__":
