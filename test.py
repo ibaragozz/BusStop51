@@ -3,6 +3,9 @@ from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
 import json
 from kivy.properties import StringProperty
+from datetime import datetime
+from kivymd.uix.label import MDLabel
+from kivy.uix.boxlayout import BoxLayout
 
 KV = '''
 MDBoxLayout:
@@ -21,13 +24,26 @@ MDBoxLayout:
 
         MDScreen:
             name: "stops"
-            ScrollView:
-                MDBoxLayout:
-                    id: stops_container
-                    orientation: "vertical"
-                    padding: "10dp"
-                    spacing: "10dp"
-                    adaptive_height: True
+            MDBoxLayout:
+                orientation: "vertical"
+                spacing: "10dp"
+                padding: "10dp"
+
+                MDTextField:
+                    id: search_field
+                    hint_text: "Поиск остановки..."
+                    mode: "outlined"
+                    size_hint_x: 0.9
+                    pos_hint: {"center_x": 0.5}
+                    on_text: app.filter_stops(self.text)
+
+                ScrollView:
+                    MDBoxLayout:
+                        id: stops_container
+                        orientation: "vertical"
+                        padding: "10dp"
+                        spacing: "10dp"
+                        adaptive_height: True
 
         MDScreen:
             name: "about"
@@ -85,21 +101,82 @@ MDBoxLayout:
     MDBoxLayout:
         id: routes_container
         size_hint_y: None
-        height: "0dp"
+        height: 0
         opacity: 0
         orientation: "vertical"
-        spacing: "5dp"
-
-        MDLabel:
-            text: "Маршрут 15 - 5 мин"
-            size_hint_y: None
-            height: "30dp"
-
-        MDLabel:
-            text: "Маршрут 27 - 8 мин" 
-            size_hint_y: None
-            height: "30dp"
+        spacing: "10dp"
+        adaptive_height: True
 '''
+
+
+def create_route_card(route_number, time_list):
+    """Создает карточку маршрута (только номер + цвет фона)"""
+    # Вычисляем ближайшее время
+    from datetime import time
+    test_time = time(12, 0)  # 12:00 для тестирования
+    now = datetime.now().replace(hour=test_time.hour, minute=test_time.minute, second=0, microsecond=0)
+
+    nearest_time = None
+    min_minutes = float('inf')
+
+    for time_str in time_list:
+        bus_time = datetime.strptime(time_str, "%H:%M").time()
+        bus_datetime = datetime.combine(now.date(), bus_time)
+
+        if bus_datetime < now:
+            continue
+
+        minutes = (bus_datetime - now).total_seconds() / 60
+        if minutes < min_minutes:
+            min_minutes = minutes
+            nearest_time = time_str
+
+    is_active = nearest_time is not None
+    minutes_left = int(min_minutes) if nearest_time else -1
+
+    # Определяем цвет по реальной логике
+    if minutes_left < 0:
+        color = [0.7, 0.7, 0.7, 1]  # Серый
+    elif minutes_left <= 5:
+        color = [1, 0.3, 0.3, 1]  # Красный
+    elif minutes_left <= 15:
+        color = [1, 0.8, 0.3, 1]  # Желтый
+    else:
+        color = [0.3, 0.8, 0.3, 1]  # Зеленый
+
+    content = BoxLayout(orientation="vertical")
+
+    # Создаем карточку
+    card = MDCard(
+        size_hint=(None, None),
+        size=("70dp", "50dp"),
+        padding="5dp",
+        radius="8dp",
+        md_bg_color=color
+    )
+
+    content.add_widget(MDLabel(
+        text=str(route_number),
+        theme_text_color="Custom",
+        text_color=(0, 0, 0, 1),
+        bold=True,
+        halign="center",
+        size_hint_y=0.6,
+        font_style="H6"  # или "Subtitle1"
+    ))
+        # Ближайшее время (если есть)
+    time_text = nearest_time if nearest_time else "---"
+    content.add_widget(MDLabel(
+        text=time_text,
+        theme_text_color="Custom",
+        text_color=(0, 0, 0, 1),
+        halign="center",
+        size_hint_y=0.4,
+        font_style="Body2"  # или "Caption"
+    ))
+
+    card.add_widget(content)
+    return card, is_active
 
 
 class StopCard(MDCard):
@@ -112,7 +189,6 @@ class StopCard(MDCard):
         self.is_favorite = False
 
     def toggle_favorite(self):
-        # Переключение звезды
         if self.is_favorite:
             self.ids.favorite_btn.icon = "star-outline"
             self.is_favorite = False
@@ -121,36 +197,75 @@ class StopCard(MDCard):
             self.is_favorite = True
 
     def on_touch_down(self, touch):
-        # Разворачиваем при нажатии на карточку (кроме кнопки)
         if self.collide_point(*touch.pos):
             if not self.ids.favorite_btn.collide_point(*touch.pos):
                 self.toggle_expand()
         return super().on_touch_down(touch)
 
     def toggle_expand(self):
-        # Переключение развернутого состояния
         routes_container = self.ids.routes_container
         if self.is_expanded:
-            # Сворачиваем
-            routes_container.height = "0dp"
+            routes_container.height = 0
             routes_container.opacity = 0
             self.is_expanded = False
         else:
-            # Разворачиваем
-            routes_container.height = "100dp"
+            self.create_route_cards()
+            routes_container.height = routes_container.minimum_height
             routes_container.opacity = 1
             self.is_expanded = True
 
+    def create_route_cards(self):
+        """Создает карточки маршрутов в рядах по 4 штуки"""
+        routes_container = self.ids.routes_container
+        routes_container.clear_widgets()
+
+        app = MDApp.get_running_app()
+        stop_data = app.schedule_data.get(self.stop_name, {})
+
+        active_routes = []
+        for route_number, time_list in stop_data.items():
+            route_card, is_active = create_route_card(route_number, time_list)
+            if is_active:
+                active_routes.append(route_card)
+
+        if not active_routes:
+            self.show_no_buses_message()
+            return
+
+        # Создаем ряды по 4 карточки
+        for i in range(0, len(active_routes), 4):
+            row_cards = active_routes[i:i + 4]
+
+            row = BoxLayout(
+                orientation="horizontal",
+                spacing="10dp",
+                size_hint_y=None,
+                height="60dp"
+            )
+
+            for card in row_cards:
+                row.add_widget(card)
+
+            routes_container.add_widget(row)
+
+    def show_no_buses_message(self):
+        """Показывает сообщение что автобусов нет"""
+        routes_container = self.ids.routes_container
+        message_label = MDLabel(
+            text="Автобусов на сегодня больше нет",
+            halign="center",
+            theme_text_color="Secondary",
+            size_hint_y=None,
+            height="30dp"
+        )
+        routes_container.add_widget(message_label)
+
 
 class BusApp(MDApp):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
     def build(self):
-        root = Builder.load_string(KV)  # root - локальная переменная
+        root = Builder.load_string(KV)
         self.schedule_data = self.load_schedule()
 
-        # Используем root вместо self.root
         stops_container = root.ids.stops_container
         stops_container.clear_widgets()
 
@@ -158,7 +273,7 @@ class BusApp(MDApp):
             card = StopCard(stop_name=stop_name)
             stops_container.add_widget(card)
 
-        return root  # теперь self.root установится
+        return root
 
     def load_schedule(self):
         """Загружает расписание из JSON файла"""
@@ -172,12 +287,17 @@ class BusApp(MDApp):
             print(f"Ошибка загрузки JSON: {e}")
             return {}
 
-    def create_stop_cards(self):
+    def filter_stops(self, search_text):
+        """Фильтрует карточки по тексту поиска"""
         stops_container = self.root.ids.stops_container
         stops_container.clear_widgets()
+
+        search_text = search_text.lower().strip()
+
         for stop_name in self.schedule_data.keys():
-            card = StopCard(stop_name=stop_name)
-            stops_container.add_widget(card)
+            if not search_text or search_text in stop_name.lower():
+                card = StopCard(stop_name=stop_name)
+                stops_container.add_widget(card)
 
     def on_switch_tabs(self, *args):
         index = list(reversed(args[0].children)).index(args[1])
