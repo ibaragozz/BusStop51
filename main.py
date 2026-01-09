@@ -1,413 +1,76 @@
 from kivy.lang import Builder
 from kivy.clock import Clock
-from kivy.uix.screenmanager import ScreenManager, Screen
 from kivymd.app import MDApp
 from kivymd.uix.card import MDCard
-from kivymd.uix.label import MDLabel
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.navigationbar import MDNavigationBar, MDNavigationItem, MDNavigationItemIcon, MDNavigationItemLabel
-from kivymd.uix.screen import MDScreen
 from kivymd.uix.button import MDIconButton
+from kivy.uix.boxlayout import BoxLayout
+from kivy.properties import StringProperty, BooleanProperty
 from kivy.uix.label import Label
+from kivy.metrics import dp
+from kivy.graphics import Color, RoundedRectangle
 from datetime import datetime
 import json
 import os
 
-
-class RouteInfo(MDBoxLayout):
-    def __init__(self, route_number, next_time, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = "vertical"
-        self.size_hint = (None, None)
-        self.size = ("70dp", "50dp")
-        self.spacing = "2dp"
-        self.padding = "5dp"
-        self.radius = [8]
-
-        # Определяем цвет на основе времени до автобуса
-        self.md_bg_color = self.get_time_color(next_time)
-
-        # Номер маршрута
-        self.add_widget(Label(
-            text=str(route_number),
-            font_size='18sp',
-            bold=True,
-            color=(0, 0, 0, 1),
-            halign="center",
-            size_hint_y=0.6
-        ))
-
-        # Время следующего автобуса
-        self.add_widget(Label(
-            text=next_time,
-            font_size='12sp',
-            color=(0, 0, 0, 1),
-            halign="center",
-            size_hint_y=0.4
-        ))
-
-    def get_time_color(self, next_time_str):
-        """Возвращает цвет в зависимости от времени до автобуса"""
-        try:
-            # Получаем текущее время
-            now = datetime.now()
-
-            # Парсим время автобуса
-            bus_time = datetime.strptime(next_time_str, "%H:%M")
-            bus_time = bus_time.replace(year=now.year, month=now.month, day=now.day)
-
-            # Если время автобуса уже прошло сегодня, предполагаем что это на следующий день
-            if bus_time < now:
-                bus_time = bus_time.replace(day=now.day + 1)
-
-            # Вычисляем разницу в минутах
-            time_diff = (bus_time - now).total_seconds() / 60
-
-            # Определяем цвет на основе времени
-            if time_diff <= 5:
-                return (1, 0.3, 0.3, 1)  # Красный - меньше 5 минут
-            elif time_diff <= 15:
-                return (1, 0.8, 0.3, 1)  # Желтый - 6-15 минут
-            else:
-                return (0.3, 0.8, 0.3, 1)  # Зеленый - больше 15 минут
-
-        except ValueError:
-            # Если время в неправильном формате, возвращаем серый цвет
-            return (0.8, 0.8, 0.8, 1)
-
-    def is_bus_coming_today(self, next_time_str):
-        """Проверяет, будет ли автобус сегодня"""
-        try:
-            now = datetime.now()
-            bus_time = datetime.strptime(next_time_str, "%H:%M")
-            bus_time = bus_time.replace(year=now.year, month=now.month, day=now.day)
-
-            # Если время уже прошло, проверяем есть ли автобусы позже сегодня
-            if bus_time < now:
-                return False
-            return True
-        except ValueError:
-            return False
-
-
-class StopCard(MDCard):
-    def __init__(self, stop_name, routes, is_favorite=False, **kwargs):
-        super().__init__(**kwargs)
-        self.orientation = "vertical"
-        self.size_hint_y = None
-        self.padding = "0dp"
-        self.spacing = "0dp"
-        self.radius = [15]
-        self.stop_name = stop_name
-        self.routes_data = routes
-        self.is_expanded = False
-        self.is_favorite = is_favorite
-
-        # Основная кнопка-заголовок
-        self.header_button = MDBoxLayout(
-            orientation="horizontal",
-            size_hint_y=None,
-            height="50dp",
-            md_bg_color=(0.9, 0.9, 0.9, 1),
-            radius=[15],
-            padding="10dp"
-        )
-
-        # Название остановки
-        self.header_button.add_widget(Label(
-            text=stop_name,
-            font_size='16sp',
-            bold=True,
-            color=(0, 0, 0, 1),
-            size_hint_x=0.7,
-            halign="left"
-        ))
-
-        # Кнопка добавления в избранное
-        self.favorite_btn = MDIconButton(
-            icon="star-outline" if not is_favorite else "star",
-            theme_text_color="Custom",
-            text_color=(1, 0.8, 0, 1) if is_favorite else (0.5, 0.5, 0.5, 1),
-            size_hint_x=0.15,
-            on_release=self.toggle_favorite
-        )
-        self.header_button.add_widget(self.favorite_btn)
-
-        # Стрелка для индикации состояния
-        self.arrow_label = Label(
-            text="▼",
-            font_size='14sp',
-            color=(0.5, 0.5, 0.5, 1),
-            size_hint_x=0.15,
-            halign="right",
-            font_name="arial"
-        )
-        self.header_button.add_widget(self.arrow_label)
-
-        # Обработчик нажатия на заголовок
-        self.header_button.bind(on_touch_down=self.on_header_touch)
-        self.add_widget(self.header_button)
-
-        # Контейнер для содержимого
-        self.content_container = MDBoxLayout(
-            orientation="vertical",
-            size_hint_y=None,
-            height=0,
-            opacity=0,
-            padding="10dp",
-            spacing="10dp"
-        )
-        self.add_widget(self.content_container)
-
-        # Начальная высота карточки (только заголовок)
-        self.height = 50
-
-        # Если карточка для избранного - автоматически разворачиваем
-        if is_favorite:
-            self.expand(animate=False)
-
-    def on_header_touch(self, instance, touch):
-        """Обработчик нажатия на заголовок"""
-        if instance.collide_point(*touch.pos) and not self.favorite_btn.collide_point(*touch.pos):
-            self.toggle_content()
-            return True
-        return False
-
-    def toggle_favorite(self, instance):
-        """Добавляет/убирает остановку из избранного"""
-        app = MDApp.get_running_app()
-        if self.is_favorite:
-            # Убираем из избранного
-            app.remove_from_favorites(self.stop_name)
-            self.favorite_btn.icon = "star-outline"
-            self.favorite_btn.text_color = (0.5, 0.5, 0.5, 1)
-            self.is_favorite = False
-        else:
-            # Добавляем в избранное
-            app.add_to_favorites(self.stop_name, self.routes_data)
-            self.favorite_btn.icon = "star"
-            self.favorite_btn.text_color = (1, 0.8, 0, 1)
-            self.is_favorite = True
-
-    def toggle_content(self):
-        """Переключает состояние развернуто/свернуто"""
-        if self.is_expanded:
-            self.collapse()
-        else:
-            self.expand()
-
-    def expand(self, animate=True):
-        """Разворачивает карточку"""
-        if not self.is_expanded:
-            self.is_expanded = True
-            self.arrow_label.text = "▲"
-
-            # Очищаем предыдущее содержимое
-            self.content_container.clear_widgets()
-
-            # Фильтруем маршруты
-            active_routes = self.filter_active_routes(self.routes_data)
-
-            if active_routes:
-                # Создаем контейнер для активных маршрутов
-                routes_container = MDBoxLayout(
-                    orientation="vertical",
-                    spacing="10dp",
-                    size_hint_y=None,
-                    adaptive_height=True
-                )
-
-                # Создаем строки маршрутов
-                self.create_route_rows(routes_container, active_routes)
-                self.content_container.add_widget(routes_container)
-
-                # Вычисляем высоту содержимого
-                content_height = self.calculate_content_height(active_routes)
-            else:
-                # Если нет активных маршрутов, показываем сообщение
-                self.show_no_buses_message()
-                content_height = 40
-
-            # Устанавливаем значения
-            self.content_container.height = content_height
-            self.content_container.opacity = 1
-
-            # Общая высота карточки = заголовок + контент
-            self.height = 50 + content_height
-
-    def collapse(self, animate=True):
-        """Сворачивает карточку"""
-        if self.is_expanded:
-            self.is_expanded = False
-            self.arrow_label.text = "▼"
-
-            # Устанавливаем значения
-            self.content_container.height = 0
-            self.content_container.opacity = 0
-
-            # Общая высота карточки = только заголовок
-            self.height = 50
-
-    def filter_active_routes(self, routes):
-        """Фильтрует маршруты, оставляя только те, у которых есть автобусы сегодня"""
-        active_routes = []
-        for route_number, next_time in routes:
-            route_info = RouteInfo(route_number, next_time)
-            if route_info.is_bus_coming_today(next_time):
-                active_routes.append((route_number, next_time))
-        return active_routes
-
-    def create_route_rows(self, container, routes):
-        """Создает строки с маршрутами (максимум 4 в строке)"""
-        row = MDBoxLayout(
-            orientation="horizontal",
-            spacing="10dp",
-            size_hint_y=None,
-            height="50dp"
-        )
-
-        for i, route_info in enumerate(routes):
-            route_number, next_time = route_info
-            route_widget = RouteInfo(route_number, next_time)
-            row.add_widget(route_widget)
-
-            if (i + 1) % 4 == 0 and (i + 1) < len(routes):
-                container.add_widget(row)
-                row = MDBoxLayout(
-                    orientation="horizontal",
-                    spacing="10dp",
-                    size_hint_y=None,
-                    height="50dp"
-                )
-
-        if len(row.children) > 0:
-            container.add_widget(row)
-
-    def calculate_content_height(self, routes):
-        """Вычисляет высоту содержимого на основе количества строк маршрутов"""
-        if not routes:
-            return 40
-
-        num_rows = (len(routes) + 3) // 4
-        routes_height = num_rows * 50 + (num_rows - 1) * 10
-        return routes_height + 20
-
-    def show_no_buses_message(self):
-        """Показывает сообщение, что автобусов больше нет сегодня"""
-        message_label = Label(
-            text="Автобусов больше нет сегодня",
-            font_size='14sp',
-            color=(0.5, 0.5, 0.5, 1),
-            halign="center",
-            size_hint_y=None,
-            height=40
-        )
-        self.content_container.add_widget(message_label)
-
-
-class AllStopsScreen(MDScreen):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.scroll = MDScrollView()
-        self.stops_box = MDBoxLayout(
-            orientation="vertical",
-            padding="10dp",
-            spacing="10dp",
-            size_hint_y=None
-        )
-        self.stops_box.bind(minimum_height=self.stops_box.setter('height'))
-        self.scroll.add_widget(self.stops_box)
-        self.add_widget(self.scroll)
-
-    def on_enter(self):
-        Clock.schedule_once(lambda dt: self.update_stops())
-
-    def update_stops(self):
-        self.stops_box.clear_widgets()
-
-        # Тестовые данные
-        stops_data = [
-            ("Остановка Центральная", [("12", "15:30"), ("25", "15:42"), ("7", "15:55")]),
-            ("Остановка с 5 маршрутами",
-             [("1", "16:00"), ("2", "16:05"), ("3", "16:10"), ("4", "16:15"), ("5", "16:20")]),
-            ("Остановка с 8 маршрутами", [("6", "16:25"), ("7", "16:30"), ("8", "16:35"), ("9", "16:40"),
-                                          ("10", "16:45"), ("11", "16:50"), ("12", "18:55"), ("13", "19:00")]),
-            ("Остановка Северная", [("3", "16:10"), ("18", "16:25")]),
-            ("Остановка Южная", [("5", "20:38"), ("12", "20:45"), ("22", "20:00"), ("31", "20:15")]),
-        ]
-
-        app = MDApp.get_running_app()
-        favorites = app.load_favorites()
-
-        for stop_name, routes in stops_data:
-            is_favorite = stop_name in favorites
-            card = StopCard(stop_name, routes, is_favorite=is_favorite)
-            self.stops_box.add_widget(card)
-
-
-class FavoritesScreen(MDScreen):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.scroll = MDScrollView()
-        self.favorites_box = MDBoxLayout(
-            orientation="vertical",
-            padding="10dp",
-            spacing="10dp",
-            size_hint_y=None
-        )
-        self.favorites_box.bind(minimum_height=self.favorites_box.setter('height'))
-        self.scroll.add_widget(self.favorites_box)
-        self.add_widget(self.scroll)
-
-    def on_enter(self):
-        Clock.schedule_once(lambda dt: self.update_favorites())
-
-    def update_favorites(self):
-        self.favorites_box.clear_widgets()
-
-        app = MDApp.get_running_app()
-        favorites = app.load_favorites()
-
-        if not favorites:
-            self.favorites_box.add_widget(Label(
-                text="Добавьте остановки в избранное",
-                halign="center",
-                color=(0.5, 0.5, 0.5, 1)
-            ))
-        else:
-            for stop_name, routes in favorites.items():
-                # routes уже загружен как список из JSON
-                card = StopCard(stop_name, routes, is_favorite=True)
-                self.favorites_box.add_widget(card)
-
-
-class AboutScreen(MDScreen):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.add_widget(Label(
-            text="Расписание автобусов\nРазработчик: Вы",
-            halign="center",
-            font_size='16sp'
-        ))
-
-
 KV = '''
 MDBoxLayout:
     orientation: "vertical"
-    md_bg_color: self.theme_cls.backgroundColor
 
     MDScreenManager:
         id: screen_manager
 
-        FavoritesScreen:
+        MDScreen:
             name: "favorites"
+            BoxLayout:
+                orientation: "vertical"
 
-        AllStopsScreen:
+                ScrollView:
+                    do_scroll_x: False
+                    BoxLayout:
+                        id: favorites_container
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: self.minimum_height
+                        padding: "10dp"
+                        spacing: "10dp"
+
+        MDScreen:
             name: "stops"
+            BoxLayout:
+                orientation: "vertical"
+                spacing: "8dp"
+                padding: "8dp"
 
-        AboutScreen:
+                MDTextField:
+                    id: search_field
+                    hint_text: "Поиск остановки..."
+                    mode: "outlined"
+                    size_hint_x: 1
+                    # Сделаем текст при вводе и курсор чёткими
+                    foreground_color: 0, 0, 0, 1      # основной текст (при вводе)
+                    cursor_color: 0, 0, 0, 1          # цвет курсора
+                    hint_text_color: 0.45, 0.45, 0.45, 1
+                    on_text: app.on_search_text(self.text)
+
+                ScrollView:
+                    do_scroll_x: False
+                    BoxLayout:
+                        id: stops_container
+                        orientation: "vertical"
+                        size_hint_y: None
+                        height: self.minimum_height
+                        padding: "10dp"
+                        spacing: "10dp"
+
+        MDScreen:
             name: "about"
+            BoxLayout:
+                orientation: "vertical"
+                padding: "20dp"
+                Label:
+                    text: "Расписание автобусов\\nРазработчик: Вы"
+                    halign: "center"
+                    font_size: "16sp"
 
     MDNavigationBar:
         on_switch_tabs: app.on_switch_tabs(*args)
@@ -432,10 +95,483 @@ MDBoxLayout:
 '''
 
 
+class RouteCard(BoxLayout):
+    def __init__(self, route_number: str, time_list: list, **kwargs):
+        super().__init__(**kwargs)
+        self.route_number = str(route_number)
+        self.time_list = time_list or []
+        self.orientation = 'vertical'
+        self.size_hint = (None, None)
+        self.size = (dp(70), dp(50))
+        self.padding = dp(5)
+        self.spacing = dp(2)
+
+        # Используем ближайшее время только для сегодняшних рейсов
+        next_time = self.get_next_time()
+        color = self.get_time_color(next_time) if next_time else (0.7, 0.7, 0.7, 1)
+
+        with self.canvas.before:
+            Color(*color)
+            self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[0])
+
+        self.lbl_number = Label(
+            text=self.route_number,
+            font_size="16sp",
+            bold=True,
+            color=(0, 0, 0, 1),
+            halign="center",
+            size_hint=(1, None),
+            height=dp(24),
+            text_size=(self.width, None)
+        )
+        self.lbl_time = Label(
+            text=next_time if next_time else "---",
+            font_size="12sp",
+            color=(0, 0, 0, 1),
+            halign="center",
+            size_hint=(1, None),
+            height=dp(20),
+            text_size=(self.width, None)
+        )
+
+        self.add_widget(self.lbl_number)
+        self.add_widget(self.lbl_time)
+
+        self.bind(pos=self._update_rect, size=self._update_rect)
+
+    def _update_rect(self, instance, value):
+        # обновляем прямоугольник при изменении позиции/размера
+        self.rect.pos = instance.pos
+        self.rect.size = instance.size
+
+    def get_next_time(self, now: datetime = None):
+        """
+        Находит ближайшее время из self.time_list.
+        Учитываются только рейсы **сегодня**, которые ещё не ушли.
+        Параметр now позволяет тестировать / передавать текущее время извне.
+        """
+        if now is None:
+            now = datetime.now()
+        nearest_time = None
+        min_minutes = float('inf')
+
+        for time_str in self.time_list:
+            try:
+                bus_time = datetime.strptime(time_str, "%H:%M")
+                bus_time = bus_time.replace(year=now.year, month=now.month, day=now.day)
+
+                # учитывать только рейсы сегодня, которые ещё не ушли
+                if bus_time < now:
+                    continue
+
+                minutes = (bus_time - now).total_seconds() / 60
+                if minutes < min_minutes:
+                    min_minutes = minutes
+                    nearest_time = time_str
+            except Exception as e:
+                # лог для отладки; не прерываем выполнение
+                print("parse time error:", e)
+                continue
+
+        return nearest_time
+
+    def get_time_color(self, next_time_str, now: datetime = None):
+        """
+        Возвращает цвет в зависимости от времени до автобуса.
+        Если next_time_str None — возвращает серый.
+        """
+        if not next_time_str:
+            return (0.8, 0.8, 0.8, 1)
+        try:
+            if now is None:
+                now = datetime.now()
+            bus_time = datetime.strptime(next_time_str, "%H:%M")
+            bus_time = bus_time.replace(year=now.year, month=now.month, day=now.day)
+
+            if bus_time < now:
+                return (0.8, 0.8, 0.8, 1)
+
+            time_diff = (bus_time - now).total_seconds() / 60
+
+            if time_diff <= 5:
+                return (1, 0.3, 0.3, 1)  # Красный
+            elif time_diff <= 15:
+                return (1, 0.8, 0.3, 1)  # Жёлтый
+            else:
+                return (0.3, 0.8, 0.3, 1)  # Зелёный
+
+        except Exception as e:
+            print("color calc error:", e)
+            return (0.8, 0.8, 0.8, 1)
+
+    def update(self, now: datetime = None):
+        """
+        Обновляет карточку: текст ближайшего рейса и фон.
+        Использует переданный now если есть (для тестов/синхронного обновления).
+        """
+        next_time = self.get_next_time(now=now)
+        # пересоздаём canvas.before корректно
+        self.canvas.before.clear()
+        if next_time:
+            self.lbl_time.text = next_time
+            with self.canvas.before:
+                Color(*self.get_time_color(next_time, now=now))
+                self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[0])
+        else:
+            self.lbl_time.text = "---"
+            with self.canvas.before:
+                Color(0.7, 0.7, 0.7, 1)
+                self.rect = RoundedRectangle(pos=self.pos, size=self.size, radius=[0])
+
+
+class StopCard(MDCard):
+    stop_name = StringProperty("")
+    is_favorite = BooleanProperty(False)
+
+    def __init__(self, stop_name: str, app_ref: MDApp, is_favorite=False, **kwargs):
+        super().__init__(**kwargs)
+        self.stop_name = stop_name
+        self.size_hint_y = None
+        self.height = dp(60)
+        self.padding = dp(10)
+        self.spacing = dp(8)
+        self.orientation = "vertical"
+        self.radius = [12]
+        self.app_ref = app_ref
+        self.is_favorite = is_favorite
+        self.is_expanded = False
+        self.routes_data = None
+
+        header = BoxLayout(size_hint_y=None, height=dp(48))
+        self.lbl_name = Label(
+            text=self.stop_name,
+            halign="left",
+            valign="middle",
+            bold=True,
+            color=(0, 0, 0, 1),
+            size_hint=(1, None),
+            height=dp(48),
+            text_size=(None, None)
+        )
+        header.add_widget(self.lbl_name)
+
+        self.btn_fav = MDIconButton(
+            icon="star" if self.is_favorite else "star-outline",
+            size_hint=(None, None),
+            size=(dp(40), dp(40)),
+            on_release=self.on_fav_pressed
+        )
+        header.add_widget(self.btn_fav)
+        self.add_widget(header)
+
+        self.routes_container = BoxLayout(
+            orientation="vertical",
+            size_hint_y=None,
+            height=0,
+            spacing=dp(8)
+        )
+        self.add_widget(self.routes_container)
+
+        # ТОЛЬКО избранные карточки раскрываем при создании
+        if self.is_favorite:
+            Clock.schedule_once(lambda dt: self.expand(), 0.1)
+
+    def load_routes_data(self):
+        if self.routes_data is None:
+            self.routes_data = self.app_ref.schedule_data.get(self.stop_name, {})
+
+    def on_touch_down(self, touch):
+        if self.collide_point(*touch.pos):
+            if self.btn_fav.collide_point(*touch.pos):
+                return super().on_touch_down(touch)
+            self.toggle_expand()
+            return True
+        return super().on_touch_down(touch)
+
+    def on_fav_pressed(self, instance):
+        if self.is_favorite:
+            self.is_favorite = False
+            self.btn_fav.icon = "star-outline"
+            self.app_ref.remove_from_favorites(self.stop_name)
+        else:
+            self.is_favorite = True
+            self.btn_fav.icon = "star"
+            self.app_ref.add_to_favorites(self.stop_name)
+
+    def toggle_expand(self):
+        if self.is_expanded:
+            self.collapse()
+        else:
+            self.expand()
+
+    def expand(self, animate=True):
+        if self.is_expanded:
+            return
+        self.is_expanded = True
+
+        self.load_routes_data()
+        self.routes_container.clear_widgets()
+
+        # Проверяем наличие активных маршрутов **только сегодня**
+        has_active_routes = False
+        for time_list in self.routes_data.values():
+            next_time = self._get_next_time_for_route(time_list)
+            if next_time is not None:
+                has_active_routes = True
+                break
+
+        if not has_active_routes:
+            lbl = Label(
+                text="Автобусов на сегодня больше нет",
+                halign="center",
+                size_hint_y=None,
+                height=dp(30),
+                color=(0.5, 0.5, 0.5, 1)
+            )
+            self.routes_container.add_widget(lbl)
+            self.routes_container.height = dp(40)
+            self.height = dp(60) + dp(40)
+            return
+
+        # Иначе — показываем активные маршруты
+        active_cards = []
+        for route_number, time_list in self.routes_data.items():
+            rc = RouteCard(route_number=route_number, time_list=time_list)
+            if rc.get_next_time() is not None:
+                active_cards.append(rc)
+
+        row_height = dp(60)
+        for i in range(0, len(active_cards), 4):
+            row = BoxLayout(
+                orientation="horizontal",
+                spacing=dp(8),
+                size_hint_y=None,
+                height=row_height
+            )
+            for rc in active_cards[i:i + 4]:
+                row.add_widget(rc)
+            self.routes_container.add_widget(row)
+
+        num_rows = (len(active_cards) + 3) // 4
+        content_height = num_rows * row_height
+        self.routes_container.height = content_height
+        self.height = dp(60) + content_height
+
+    def _get_next_time_for_route(self, time_list, now: datetime = None):
+        """Возвращаем ближайшее время для маршрута только для сегодняшних рейсов."""
+        if now is None:
+            now = datetime.now()
+        nearest_time = None
+        min_minutes = float('inf')
+
+        for time_str in time_list:
+            try:
+                bus_time = datetime.strptime(time_str, "%H:%M")
+                bus_time = bus_time.replace(year=now.year, month=now.month, day=now.day)
+                if bus_time < now:
+                    continue
+                minutes = (bus_time - now).total_seconds() / 60
+                if minutes < min_minutes:
+                    min_minutes = minutes
+                    nearest_time = time_str
+            except Exception as e:
+                print("parse route time error:", e)
+                continue
+
+        return nearest_time
+
+    def collapse(self):
+        if not self.is_expanded:
+            return
+        self.is_expanded = False
+        self.routes_container.clear_widgets()
+        self.routes_container.height = 0
+        self.height = dp(60)
+
+    def refresh_route_cards(self, now: datetime = None):
+        """
+        При обновлении пересобираем список карточек маршрутов с учётом текущего времени.
+        Если маршрутов сегодня больше нет — показываем сообщение.
+        """
+        if not self.is_expanded:
+            return
+
+        self.load_routes_data()
+        self.routes_container.clear_widgets()
+
+        has_active_routes = False
+        for time_list in self.routes_data.values():
+            next_time = self._get_next_time_for_route(time_list, now=now)
+            if next_time is not None:
+                has_active_routes = True
+                break
+
+        if not has_active_routes:
+            lbl = Label(
+                text="Автобусов на сегодня больше нет",
+                halign="center",
+                size_hint_y=None,
+                height=dp(30),
+                color=(0.5, 0.5, 0.5, 1)
+            )
+            self.routes_container.add_widget(lbl)
+            self.routes_container.height = dp(40)
+            self.height = dp(60) + dp(40)
+            return
+
+        active_cards = []
+        for route_number, time_list in self.routes_data.items():
+            rc = RouteCard(route_number=route_number, time_list=time_list)
+            if rc.get_next_time(now=now) is not None:
+                active_cards.append(rc)
+
+        row_height = dp(60)
+        for i in range(0, len(active_cards), 4):
+            row = BoxLayout(
+                orientation="horizontal",
+                spacing=dp(8),
+                size_hint_y=None,
+                height=row_height
+            )
+            for rc in active_cards[i:i + 4]:
+                row.add_widget(rc)
+            self.routes_container.add_widget(row)
+
+        num_rows = (len(active_cards) + 3) // 4
+        content_height = num_rows * row_height
+        self.routes_container.height = content_height
+        self.height = dp(60) + content_height
+
+
 class BusApp(MDApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self.schedule_file = "schedule.json"
         self.favorites_file = "favorites.json"
+        self.schedule_data = {}
+        self.stop_cards = {}
+        self.update_interval = 30
+        self.favorites = set()
+
+    def build(self):
+        self.theme_cls.primary_palette = "Blue"
+        root = Builder.load_string(KV)
+        Clock.schedule_once(self._fast_init, 0.1)
+        return root
+
+    def _fast_init(self, dt):
+        try:
+            self.schedule_data = self.load_schedule_structure()
+            self.favorites = self.load_favorites()
+
+            stops_container = self.root.ids.stops_container
+            stops_container.clear_widgets()
+            self.stop_cards.clear()
+
+            # ВСЕ КАРТОЧКИ В "ОСТАНОВКАХ" СОЗДАЮТСЯ СВЕРНУТЫМИ
+            for stop_name in self.schedule_data.keys():
+                card = StopCard(
+                    stop_name=stop_name,
+                    app_ref=self,
+                    is_favorite=(stop_name in self.favorites)
+                )
+                self.stop_cards[stop_name] = card
+                stops_container.add_widget(card)
+
+            Clock.schedule_once(self._init_favorites, 0.2)
+            Clock.schedule_interval(self._periodic_update, self.update_interval)
+
+        except Exception as e:
+            print(f"Ошибка инициализации: {e}")
+
+    def _init_favorites(self, dt):
+        fav_container = self.root.ids.favorites_container
+        fav_container.clear_widgets()
+        for stop_name in self.favorites:
+            card = StopCard(
+                stop_name=stop_name,
+                app_ref=self,
+                is_favorite=True
+            )
+            fav_container.add_widget(card)
+
+    def load_schedule_structure(self):
+        if not os.path.exists(self.schedule_file):
+            return {}
+        try:
+            with open(self.schedule_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                self.schedule_data = data
+                return data
+        except Exception as e:
+            print("load schedule error:", e)
+            return {}
+
+    def load_favorites(self):
+        if not os.path.exists(self.favorites_file):
+            return set()
+        try:
+            with open(self.favorites_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    return set(data)
+                elif isinstance(data, dict):
+                    return set(data.keys())
+                return set()
+        except Exception as e:
+            print("load favorites error:", e)
+            return set()
+
+    def save_favorites(self):
+        try:
+            with open(self.favorites_file, "w", encoding="utf-8") as f:
+                json.dump(list(self.favorites), f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print("save favorites error:", e)
+
+    def add_to_favorites(self, stop_name):
+        self.favorites.add(stop_name)
+        self.save_favorites()
+        fav_container = self.root.ids.favorites_container
+        for child in fav_container.children:
+            if getattr(child, "stop_name", None) == stop_name:
+                return
+        card = StopCard(stop_name=stop_name, app_ref=self, is_favorite=True)
+        fav_container.add_widget(card)
+
+    def remove_from_favorites(self, stop_name):
+        if stop_name in self.favorites:
+            self.favorites.remove(stop_name)
+            self.save_favorites()
+            fav_container = self.root.ids.favorites_container
+            for child in list(fav_container.children):
+                if getattr(child, "stop_name", None) == stop_name:
+                    fav_container.remove_widget(child)
+                    break
+
+    def _periodic_update(self, dt):
+        now = datetime.now()
+        # Обновляем развёрнутые карточки в основном списке
+        for stop_card in self.stop_cards.values():
+            if stop_card.is_expanded:
+                stop_card.refresh_route_cards(now=now)
+        # И в избранных
+        try:
+            fav_container = self.root.ids.favorites_container
+            for child in list(fav_container.children):
+                if isinstance(child, StopCard) and child.is_expanded:
+                    child.refresh_route_cards(now=now)
+        except Exception as e:
+            print("fav update error:", e)
+
+    def on_search_text(self, text):
+        text = (text or "").strip().lower()
+        stops_container = self.root.ids.stops_container
+        stops_container.clear_widgets()
+
+        for stop_name, card in self.stop_cards.items():
+            if not text or text in stop_name.lower():
+                stops_container.add_widget(card)
 
     def on_switch_tabs(self, *args):
         item_text = args[3]
@@ -444,65 +580,7 @@ class BusApp(MDApp):
             "Остановки": "stops",
             "О приложении": "about"
         }
-        self.root.ids.screen_manager.current = screen_map.get(item_text, "favorites")
-
-    def load_favorites(self):
-        """Загружает избранные остановки из файла"""
-        if os.path.exists(self.favorites_file):
-            try:
-                with open(self.favorites_file, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
-                    # Проверяем, что загруженные данные - словарь
-                    if isinstance(data, dict):
-                        return data
-                    else:
-                        return {}
-            except:
-                return {}
-        return {}
-
-    def add_to_favorites(self, stop_name, routes):
-        """Добавляет остановку в избранное"""
-        favorites = self.load_favorites()
-        # Убеждаемся, что favorites - словарь
-        if not isinstance(favorites, dict):
-            favorites = {}
-
-        # Сохраняем маршруты как список
-        favorites[stop_name] = routes
-        self.save_favorites(favorites)
-
-    def save_favorites(self, favorites):
-        """Сохраняет избранные остановки в файл"""
-        try:
-            # Убеждаемся, что сохраняем словарь
-            if not isinstance(favorites, dict):
-                favorites = {}
-
-            with open(self.favorites_file, 'w', encoding='utf-8') as f:
-                json.dump(favorites, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"Ошибка сохранения: {e}")
-
-    def remove_from_favorites(self, stop_name):
-        """Убирает остановку из избранного"""
-        favorites = self.load_favorites()
-        if stop_name in favorites:
-            del favorites[stop_name]
-            self.save_favorites(favorites)
-
-    def load_favorites(self):
-        """Загружает избранные остановки из файла"""
-        if os.path.exists(self.favorites_file):
-            try:
-                with open(self.favorites_file, 'r', encoding='utf-8') as f:
-                    return json.load(f)
-            except:
-                return {}
-        return {}
-
-    def build(self):
-        return Builder.load_string(KV)
+        self.root.ids.screen_manager.current = screen_map.get(item_text, "stops")
 
 
 if __name__ == "__main__":
